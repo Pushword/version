@@ -127,17 +127,21 @@ class Versionner implements EventSubscriber //EventSubscriberInterface
         $this->fileSystem->remove($this->getVersionDir($pageId));
     }
 
-    /** @param PageInterface|string $page */
+    /**
+     * @param PageInterface|string $page
+     *
+     * @return string[]
+     */
     public function getPageVersions($page): array
     {
         $dir = $this->getVersionDir($page);
 
-        if (! file_exists($dir)) {
+        if (! file_exists($dir) || ! \is_array($scandir = scandir($dir))) {
             return [];
         }
 
-        $versions = array_filter(scandir($dir), function (string $item) {
-            return ! \in_array($item, ['.', '..']);
+        $versions = array_filter($scandir, function (string $item) {
+            return ! \in_array($item, ['.', '..'], true);
         });
 
         return array_values($versions);
@@ -150,11 +154,14 @@ class Versionner implements EventSubscriber //EventSubscriberInterface
     }
 
     /** @param PageInterface|string $page */
-    private function getVersionFile($page, string $version = ''): string
+    private function getVersionFile($page, ?string $version = null): string
     {
-        return $this->getVersionDir($page).'/'.($version ?: uniqid());
+        return $this->getVersionDir($page).'/'.($version ?? uniqid());
     }
 
+    /**
+     * @return array<string>
+     */
     private function getProperties(PageInterface $page): array
     {
         return Entity::getProperties($page);

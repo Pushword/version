@@ -12,11 +12,9 @@ use Symfony\Component\HttpFoundation\Response;
 
 class VersionController extends AbstractController
 {
-    /** @var Versionner */
-    private $versionner;
+    private Versionner $versionner;
 
-    /** @var string */
-    private $pageClass;
+    private string $pageClass;
 
     /** @required */
     public function setVersionner(Versionner $versionner): void
@@ -27,7 +25,7 @@ class VersionController extends AbstractController
     /** @required */
     public function setParams(ParameterBagInterface $params): void
     {
-        $this->pageClass = (string) $params->get('pw.entity_page');
+        $this->pageClass = (string) $params->get('pw.entity_page'); // @phpstan-ignore-line
     }
 
     /**
