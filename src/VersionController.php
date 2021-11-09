@@ -22,10 +22,14 @@ class VersionController extends AbstractController
         $this->versionner = $versionner;
     }
 
-    /** @required */
+    /**
+     * @required
+     * @psalm-suppress PossiblyInvalidArgument
+     * @psalm-suppress InvalidPropertyAssignmentValue
+     */
     public function setParams(ParameterBagInterface $params): void
     {
-        $this->pageClass = (string) $params->get('pw.entity_page'); // @phpstan-ignore-line
+        $this->pageClass = $params->get('pw.entity_page'); // @phpstan-ignore-line
     }
 
     /**
