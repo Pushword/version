@@ -9,8 +9,6 @@ class Configuration implements ConfigurationInterface
 {
     public function getConfigTreeBuilder()
     {
-        $treeBuilder = new TreeBuilder('version');
-
-        return $treeBuilder;
+        return new TreeBuilder('version');
     }
 }
