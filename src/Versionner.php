@@ -111,11 +111,7 @@ class Versionner implements EventSubscriber //EventSubscriberInterface
     private function getPageVersion($page, string $version): string
     {
         $versionFile = $this->getVersionFile($page, $version);
-        $content = file_get_contents($versionFile);
-
-        if (false === $content) {
-            throw new Exception('Version not found');
-        }
+        $content = \Safe\file_get_contents($versionFile);
 
         return $content;
     }
@@ -135,7 +131,7 @@ class Versionner implements EventSubscriber //EventSubscriberInterface
     {
         $dir = $this->getVersionDir($page);
 
-        if (! file_exists($dir) || ! \is_array($scandir = scandir($dir))) {
+        if (! file_exists($dir) || ! \is_array($scandir = \Safe\scandir($dir))) {
             return [];
         }
 
