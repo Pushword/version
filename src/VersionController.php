@@ -8,11 +8,15 @@ use Pushword\Core\Repository\Repository;
 use Sensio\Bundle\FrameworkExtraBundle\Configuration\Security;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 class VersionController extends AbstractController
 {
     private Versionner $versionner;
+
+    private TranslatorInterface $translator;
 
     private string $pageClass;
 
@@ -20,6 +24,12 @@ class VersionController extends AbstractController
     public function setVersionner(Versionner $versionner): void
     {
         $this->versionner = $versionner;
+    }
+
+    /** @required */
+    public function setTranslator(TranslatorInterface $translator): void
+    {
+        $this->translator = $translator;
     }
 
     /**
@@ -42,9 +52,11 @@ class VersionController extends AbstractController
         return $this->redirectToRoute('admin_app_page_edit', ['id' => $id]);
     }
 
-    public function resetVersioning(string $id): Response
+    /** @psalm-suppress  UndefinedInterfaceMethod */
+    public function resetVersioning(Request $request, int $id): Response
     {
         $this->versionner->reset($id);
+        $request->getSession()->getFlashBag()->add('success', $this->translator->trans('version.reset_history'));
 
         return $this->redirectToRoute('admin_app_page_edit', ['id' => $id]);
     }
@@ -67,7 +79,7 @@ class VersionController extends AbstractController
              * @psalm-suppress InvalidStringClass
              */
             $object = new $entity();
-            $pageVersions[$version] = $this->versionner->populate($object, $page->getId(), $version);
+            $pageVersions[$version] = $this->versionner->populate($object, $version, (int) $page->getId());
         }
 
         return $this->render('@PushwordVersion/list.html.twig', [

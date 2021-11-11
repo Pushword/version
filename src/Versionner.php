@@ -91,24 +91,23 @@ class Versionner implements EventSubscriber //EventSubscriberInterface
             throw new Exception('Page not found `'.$pageId.'`');
         }
 
-        $this->populate($page, $page->getId(), $version);
+        $this->populate($page, $version);
 
         $this->entityManager->flush();
 
         static::$version = true;
     }
 
-    /** @param PageInterface|string $id */
-    public function populate(PageInterface $page, $id, string $version): PageInterface
+    public function populate(PageInterface $page, string $version, ?int $pageId = null): PageInterface
     {
-        $pageVersionned = $this->getPageVersion($id, $version);
+        $pageVersionned = $this->getPageVersion(null !== $pageId ? $pageId : $page, $version);
 
         $this->serializer->deserialize($pageVersionned, \get_class($page), 'json', [AbstractNormalizer::OBJECT_TO_POPULATE => $page]);
 
         return $page;
     }
 
-    /** @param PageInterface|string $page */
+    /** @param PageInterface|int $page */
     private function getPageVersion($page, string $version): string
     {
         $versionFile = $this->getVersionFile($page, $version);
@@ -121,14 +120,14 @@ class Versionner implements EventSubscriber //EventSubscriberInterface
         return $content;
     }
 
-    /** @param PageInterface|string $pageId */
+    /** @param PageInterface|int $pageId */
     public function reset($pageId): void
     {
         $this->fileSystem->remove($this->getVersionDir($pageId));
     }
 
     /**
-     * @param PageInterface|string $page
+     * @param PageInterface|int $page
      *
      * @return string[]
      */
@@ -145,13 +144,15 @@ class Versionner implements EventSubscriber //EventSubscriberInterface
         return array_values($versions);
     }
 
-    /** @param PageInterface|string $page */
+    /** @param PageInterface|int $page */
     private function getVersionDir($page): string
     {
-        return $this->logsDir.'/version/'.($page instanceof PageInterface ? (string) $page->getId() : $page);
+        $pageId = ($page instanceof PageInterface ? (string) $page->getId() : $page);
+
+        return $this->logsDir.'/version/'.$pageId;
     }
 
-    /** @param PageInterface|string $page */
+    /** @param PageInterface|int $page */
     private function getVersionFile($page, ?string $version = null): string
     {
         return $this->getVersionDir($page).'/'.($version ?? uniqid());
