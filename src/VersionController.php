@@ -65,7 +65,7 @@ class VersionController extends AbstractController
     {
         $page = Repository::getPageRepository($this->get('doctrine'), $this->pageClass)->findOneBy(['id' => $id]);
 
-        if (! $page) {
+        if (null === $page) {
             throw new Exception('Page not found `'.$id.'`');
         }
 

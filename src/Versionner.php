@@ -58,7 +58,7 @@ class Versionner implements EventSubscriber //EventSubscriberInterface
 
     public function postUpdate(LifecycleEventArgs $lifecycleEventArgs): void
     {
-        if (false === static::$version) {
+        if (! static::$version) {
             return;
         }
 
@@ -87,7 +87,7 @@ class Versionner implements EventSubscriber //EventSubscriberInterface
 
         $page = Repository::getPageRepository($this->entityManager, $this->pageClass)->findOneBy(['id' => $pageId]);
 
-        if (! $page) {
+        if (null === $page) {
             throw new Exception('Page not found `'.$pageId.'`');
         }
 
@@ -111,9 +111,8 @@ class Versionner implements EventSubscriber //EventSubscriberInterface
     private function getPageVersion($page, string $version): string
     {
         $versionFile = $this->getVersionFile($page, $version);
-        $content = \Safe\file_get_contents($versionFile);
 
-        return $content;
+        return \Safe\file_get_contents($versionFile);
     }
 
     /** @param PageInterface|int $pageId */
