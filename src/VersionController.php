@@ -37,9 +37,9 @@ class VersionController extends AbstractController
      * @psalm-suppress PossiblyInvalidArgument
      * @psalm-suppress InvalidPropertyAssignmentValue
      */
-    public function setParams(ParameterBagInterface $params): void
+    public function setParams(ParameterBagInterface $parameterBag): void
     {
-        $this->pageClass = $params->get('pw.entity_page'); // @phpstan-ignore-line
+        $this->pageClass = $parameterBag->get('pw.entity_page'); // @phpstan-ignore-line
     }
 
     /**

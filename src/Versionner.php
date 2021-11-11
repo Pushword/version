@@ -51,18 +51,18 @@ class Versionner implements EventSubscriber //EventSubscriberInterface
         ];
     }
 
-    public function postPersist(LifecycleEventArgs $args): void
+    public function postPersist(LifecycleEventArgs $lifecycleEventArgs): void
     {
-        $this->postUpdate($args);
+        $this->postUpdate($lifecycleEventArgs);
     }
 
-    public function postUpdate(LifecycleEventArgs $args): void
+    public function postUpdate(LifecycleEventArgs $lifecycleEventArgs): void
     {
         if (false === static::$version) {
             return;
         }
 
-        $entity = $args->getObject();
+        $entity = $lifecycleEventArgs->getObject();
 
         if (! $entity instanceof PageInterface) {
             return;
