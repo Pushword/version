@@ -21,6 +21,9 @@ class Versionner implements EventSubscriber //EventSubscriberInterface
 
     private string $logsDir;
 
+    /**
+     * @var class-string<PageInterface>
+     */
     private string $pageClass;
 
     private EntityManagerInterface $entityManager;
@@ -29,6 +32,9 @@ class Versionner implements EventSubscriber //EventSubscriberInterface
 
     private SerializerInterface $serializer;
 
+    /**
+     * @param class-string<PageInterface> $pageClass
+     */
     public function __construct(
         string $logDir,
         string $pageClass,
