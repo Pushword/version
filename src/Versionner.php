@@ -42,6 +42,9 @@ class Versionner implements EventSubscriber //EventSubscriberInterface
         $this->serializer = $serializer;
     }
 
+    /**
+     * @return string[]
+     */
     public function getSubscribedEvents()
     {
         // return the subscribed events, their methods and priorities
