@@ -134,7 +134,7 @@ class Versionner implements EventSubscriber //EventSubscriberInterface
             return [];
         }
 
-        $versions = array_filter($scandir, fn (string $item) => ! \in_array($item, ['.', '..'], true));
+        $versions = array_filter($scandir, fn (string $item): bool => ! \in_array($item, ['.', '..'], true));
 
         return array_values($versions);
     }
