@@ -45,7 +45,7 @@ class VersionController extends AbstractController
     /**
      * @Security("is_granted('ROLE_PUSHWORD_ADMIN')")
      */
-    public function loadVersion(string $id, string $version): Response
+    public function loadVersion(string $id, string $version): \Symfony\Component\HttpFoundation\RedirectResponse
     {
         $this->versionner->loadVersion($id, $version);
 
@@ -53,7 +53,7 @@ class VersionController extends AbstractController
     }
 
     /** @psalm-suppress  UndefinedInterfaceMethod */
-    public function resetVersioning(Request $request, int $id): Response
+    public function resetVersioning(Request $request, int $id): \Symfony\Component\HttpFoundation\RedirectResponse
     {
         $this->versionner->reset($id);
         $request->getSession()->getFlashBag()->add('success', $this->translator->trans('version.reset_history'));
