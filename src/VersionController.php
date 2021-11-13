@@ -18,6 +18,9 @@ class VersionController extends AbstractController
 
     private TranslatorInterface $translator;
 
+    /**
+     * @var class-string<PageInterface>
+     */
     private string $pageClass;
 
     /** @required */
@@ -56,7 +59,7 @@ class VersionController extends AbstractController
     public function resetVersioning(Request $request, int $id): \Symfony\Component\HttpFoundation\RedirectResponse
     {
         $this->versionner->reset($id);
-        $request->getSession()->getFlashBag()->add('success', $this->translator->trans('version.reset_history'));
+        $request->getSession()->getFlashBag()->add('success', $this->translator->trans('version.reset_history')); // @phpstan-ignore-line
 
         return $this->redirectToRoute('admin_app_page_edit', ['id' => $id]);
     }
@@ -74,10 +77,6 @@ class VersionController extends AbstractController
         $pageVersions = [];
         $entity = $this->pageClass;
         foreach ($versions as $version) {
-            /**
-             * @var PageInterface $object
-             * @psalm-suppress InvalidStringClass
-             */
             $object = new $entity();
             $pageVersions[$version] = $this->versionner->populate($object, $version, (int) $page->getId());
         }
