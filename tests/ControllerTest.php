@@ -11,8 +11,6 @@ class ControllerTest extends AbstractAdminTestClass
 {
     public function testLogin()
     {
-        $pageClass = 'App\Entity\Page';
-
         $client = $this->loginUser();
 
         $client->request('GET', '/admin/version/1/list');
@@ -20,7 +18,6 @@ class ControllerTest extends AbstractAdminTestClass
 
         $versionner = new Versionner(
             self::$kernel->getLogDir(),
-            $pageClass,
             self::$kernel->getContainer()->get('doctrine.orm.default_entity_manager'),
             new Serializer([], ['json' => new JsonEncoder()])
         );

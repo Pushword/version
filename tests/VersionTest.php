@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Pushword\Version\Tests;
 
-use Pushword\Core\Repository\Repository;
+use Pushword\Core\Entity\Page;
 use Pushword\Version\Versionner;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Serializer\Encoder\JsonEncoder;
@@ -15,11 +15,10 @@ class VersionTest extends KernelTestCase
     public function testIt(): void
     {
         self::bootKernel();
-        $pageClass = 'App\Entity\Page';
 
         $em = self::$kernel->getContainer()->get('doctrine.orm.default_entity_manager');
 
-        $repo = Repository::getPageRepository($em, $pageClass);
+        $repo = $em->getRepository(Page::class);
 
         $page = $repo->findOneBy(['id' => 1]);
 
@@ -30,7 +29,6 @@ class VersionTest extends KernelTestCase
 
         $versionner = new Versionner(
             self::$kernel->getLogDir(),
-            $pageClass,
             self::$kernel->getContainer()->get('doctrine.orm.default_entity_manager'),
             new Serializer([], ['json' => new JsonEncoder()])
         );
