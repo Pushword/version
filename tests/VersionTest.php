@@ -16,25 +16,27 @@ class VersionTest extends KernelTestCase
     {
         self::bootKernel();
 
-        $em = self::$kernel->getContainer()->get('doctrine.orm.default_entity_manager');
+        $em = self::getContainer()->get('doctrine.orm.default_entity_manager');
 
         $repo = $em->getRepository(Page::class);
 
         $page = $repo->findOneBy(['id' => 1]);
+        self::assertNotNull($page);
 
         $page->setH1('edited title to test Versioning');
+
         $em->flush();
         $page->setH1('edited title to test Versioning the second time');
         $em->flush();
 
         $versionner = new Versionner(
-            self::$kernel->getLogDir(),
-            self::$kernel->getContainer()->get('doctrine.orm.default_entity_manager'),
+            self::bootKernel()->getLogDir(),
+            self::getContainer()->get('doctrine.orm.default_entity_manager'),
             new Serializer([], ['json' => new JsonEncoder()])
         );
 
         $pageVersions = $versionner->getPageVersions($page);
 
-        $this->assertTrue(\count($pageVersions) >= 1);
+        self::assertGreaterThanOrEqual(1, \count($pageVersions));
     }
 }
