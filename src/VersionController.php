@@ -3,6 +3,7 @@
 namespace Pushword\Version;
 
 use Doctrine\Persistence\ManagerRegistry;
+use Exception;
 use Pushword\Core\Entity\Page;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
@@ -58,7 +59,7 @@ class VersionController extends AbstractController
             return $session->getFlashBag();
         }
 
-        throw new \Exception();
+        throw new Exception();
     }
 
     public function resetVersioning(Request $request, int $id): RedirectResponse
@@ -75,7 +76,7 @@ class VersionController extends AbstractController
         $page = $this->doctrine->getRepository(Page::class)->findOneBy(['id' => $id]);
 
         if (! $page instanceof Page) {
-            throw new \Exception('Page not found `'.$id.'`');
+            throw new Exception('Page not found `'.$id.'`');
         }
 
         $versions = $this->versionner->getPageVersions($page);

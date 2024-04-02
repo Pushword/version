@@ -7,6 +7,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\PostPersistEventArgs;
 use Doctrine\ORM\Event\PostUpdateEventArgs;
 use Doctrine\ORM\Events;
+use Exception;
 use Pushword\Core\Entity\Page;
 // use Doctrine\ORM\Event\LifecycleEventArgs;
 use Pushword\Core\Utils\Entity;
@@ -71,7 +72,7 @@ class Versionner
         $page = $this->entityManager->getRepository(Page::class)->findOneBy(['id' => $pageId]);
 
         if (! $page instanceof Page) {
-            throw new \Exception('Page not found `'.$pageId.'`');
+            throw new Exception('Page not found `'.$pageId.'`');
         }
 
         $this->populate($page, $version);
