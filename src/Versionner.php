@@ -7,9 +7,9 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\PostPersistEventArgs;
 use Doctrine\ORM\Event\PostUpdateEventArgs;
 use Doctrine\ORM\Events;
-use Pushword\Core\Entity\PageInterface;
+use Exception;
+use Pushword\Core\Entity\Page;
 // use Doctrine\ORM\Event\LifecycleEventArgs;
-use Pushword\Core\Repository\Repository;
 use Pushword\Core\Utils\Entity;
 
 use function Safe\file_get_contents;
@@ -27,12 +27,8 @@ class Versionner
 
     public static bool $version = true;
 
-    /**
-     * @param class-string<PageInterface> $pageClass
-     */
     public function __construct(
         private readonly string $logDir,
-        private readonly string $pageClass,
         private readonly EntityManagerInterface $entityManager,
         private readonly SerializerInterface $serializer
     ) {
@@ -52,14 +48,14 @@ class Versionner
 
         $entity = $lifecycleEventArgs->getObject();
 
-        if (! $entity instanceof PageInterface) {
+        if (! $entity instanceof Page) {
             return;
         }
 
         $this->createVersion($entity);
     }
 
-    private function createVersion(PageInterface $page): void
+    private function createVersion(Page $page): void
     {
         $versionFile = $this->getVersionFile($page);
 
@@ -73,10 +69,10 @@ class Versionner
     {
         static::$version = false;
 
-        $page = Repository::getPageRepository($this->entityManager, $this->pageClass)->findOneBy(['id' => $pageId]);
+        $page = $this->entityManager->getRepository(Page::class)->findOneBy(['id' => $pageId]);
 
-        if (! $page instanceof PageInterface) {
-            throw new \Exception('Page not found `'.$pageId.'`');
+        if (! $page instanceof Page) {
+            throw new Exception('Page not found `'.$pageId.'`');
         }
 
         $this->populate($page, $version);
@@ -86,7 +82,7 @@ class Versionner
         static::$version = true;
     }
 
-    public function populate(PageInterface $page, string $version, ?int $pageId = null): PageInterface
+    public function populate(Page $page, string $version, ?int $pageId = null): Page
     {
         $pageVersionned = $this->getPageVersion($pageId ?? $page, $version);
 
@@ -95,14 +91,14 @@ class Versionner
         return $page;
     }
 
-    private function getPageVersion(int|PageInterface $page, string $version): string
+    private function getPageVersion(int|Page $page, string $version): string
     {
         $versionFile = $this->getVersionFile($page, $version);
 
         return file_get_contents($versionFile);
     }
 
-    public function reset(int|PageInterface $pageId): void
+    public function reset(int|Page $pageId): void
     {
         $this->fileSystem->remove($this->getVersionDir($pageId));
     }
@@ -110,13 +106,14 @@ class Versionner
     /**
      * @return string[]
      */
-    public function getPageVersions(int|PageInterface $page): array
+    public function getPageVersions(int|Page $page): array
     {
         $dir = $this->getVersionDir($page);
         if (! file_exists($dir)) {
             return [];
         }
 
+        /** @var string[] */
         $scandir = scandir($dir);
 
         $versions = array_filter($scandir, static fn (string $item): bool => ! \in_array($item, ['.', '..'], true));
@@ -124,14 +121,14 @@ class Versionner
         return array_values($versions);
     }
 
-    private function getVersionDir(int|PageInterface $page): string
+    private function getVersionDir(int|Page $page): string
     {
-        $pageId = ($page instanceof PageInterface ? (string) $page->getId() : $page);
+        $pageId = ($page instanceof Page ? (string) $page->getId() : $page);
 
         return $this->logDir.'/version/'.$pageId;
     }
 
-    private function getVersionFile(int|PageInterface $page, ?string $version = null): string
+    private function getVersionFile(int|Page $page, ?string $version = null): string
     {
         return $this->getVersionDir($page).'/'.($version ?? uniqid());
     }
@@ -139,7 +136,7 @@ class Versionner
     /**
      * @return array<string>
      */
-    private function getProperties(PageInterface $page): array
+    private function getProperties(Page $page): array
     {
         return Entity::getProperties($page);
     }

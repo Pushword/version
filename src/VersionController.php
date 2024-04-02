@@ -3,11 +3,10 @@
 namespace Pushword\Version;
 
 use Doctrine\Persistence\ManagerRegistry;
-use Pushword\Core\Entity\PageInterface;
-use Pushword\Core\Repository\Repository;
+use Exception;
+use Pushword\Core\Entity\Page;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
-use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -23,11 +22,6 @@ class VersionController extends AbstractController
     private Versionner $versionner;
 
     private TranslatorInterface $translator;
-
-    /**
-     * @var class-string<PageInterface>
-     */
-    private string $pageClass;
 
     private ManagerRegistry $doctrine;
 
@@ -49,16 +43,6 @@ class VersionController extends AbstractController
         $this->translator = $translator;
     }
 
-    /**
-     * @psalm-suppress PossiblyInvalidArgument
-     * @psalm-suppress InvalidPropertyAssignmentValue
-     */
-    #[Required]
-    public function setParams(ParameterBagInterface $parameterBag): void
-    {
-        $this->pageClass = $parameterBag->get('pw.entity_page'); // @phpstan-ignore-line
-    }
-
     #[IsGranted('ROLE_PUSHWORD_ADMIN')]
     public function loadVersion(string $id, string $version): RedirectResponse
     {
@@ -75,10 +59,9 @@ class VersionController extends AbstractController
             return $session->getFlashBag();
         }
 
-        throw new \Exception();
+        throw new Exception();
     }
 
-    /** @psalm-suppress  UndefinedInterfaceMethod */
     public function resetVersioning(Request $request, int $id): RedirectResponse
     {
         $this->versionner->reset($id);
@@ -90,18 +73,17 @@ class VersionController extends AbstractController
 
     public function listVersion(string $id): Response
     {
-        $page = Repository::getPageRepository($this->doctrine, $this->pageClass)->findOneBy(['id' => $id]);
+        $page = $this->doctrine->getRepository(Page::class)->findOneBy(['id' => $id]);
 
-        if (! $page instanceof PageInterface) {
-            throw new \Exception('Page not found `'.$id.'`');
+        if (! $page instanceof Page) {
+            throw new Exception('Page not found `'.$id.'`');
         }
 
         $versions = $this->versionner->getPageVersions($page);
 
         $pageVersions = [];
-        $entity = $this->pageClass;
         foreach ($versions as $version) {
-            $object = new $entity();
+            $object = new Page();
             $pageVersions[$version] = $this->versionner->populate($object, $version, (int) $page->getId());
         }
 

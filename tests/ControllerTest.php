@@ -4,24 +4,22 @@ namespace Pushword\Version\Tests;
 
 use Pushword\Admin\Tests\AbstractAdminTestClass;
 use Pushword\Version\Versionner;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Serializer\Encoder\JsonEncoder;
 use Symfony\Component\Serializer\Serializer;
 
 class ControllerTest extends AbstractAdminTestClass
 {
-    public function testLogin()
+    public function testLogin(): void
     {
-        $pageClass = 'App\Entity\Page';
-
         $client = $this->loginUser();
 
         $client->request('GET', '/admin/version/1/list');
-        $this->assertEquals(200, $client->getResponse()->getStatusCode());
+        self::assertSame(Response::HTTP_OK, $client->getResponse()->getStatusCode(), (string) $client->getResponse()->getContent());
 
         $versionner = new Versionner(
-            self::$kernel->getLogDir(),
-            $pageClass,
-            self::$kernel->getContainer()->get('doctrine.orm.default_entity_manager'),
+            self::bootKernel()->getLogDir(),
+            self::getContainer()->get('doctrine.orm.default_entity_manager'),
             new Serializer([], ['json' => new JsonEncoder()])
         );
 
@@ -29,9 +27,9 @@ class ControllerTest extends AbstractAdminTestClass
         $version = $pageVersions[0];
 
         $client->request('GET', '/admin/version/1/'.$version);
-        $this->assertEquals(302, $client->getResponse()->getStatusCode());
+        self::assertSame(Response::HTTP_FOUND, $client->getResponse()->getStatusCode(), (string) $client->getResponse()->getContent());
 
         $client->request('GET', '/admin/version/1/reset');
-        $this->assertEquals(302, $client->getResponse()->getStatusCode());
+        self::assertSame(Response::HTTP_FOUND, $client->getResponse()->getStatusCode(), (string) $client->getResponse()->getContent());
     }
 }
