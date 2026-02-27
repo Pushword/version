@@ -67,19 +67,17 @@ class Versionner
     {
         static::$version = false;
 
-        try {
-            $page = $this->entityManager->getRepository(Page::class)->find($pageId);
+        $page = $this->entityManager->getRepository(Page::class)->find($pageId);
 
-            if (! $page instanceof Page) {
-                throw new Exception('Page not found `'.$pageId.'`');
-            }
-
-            $this->populate($page, $version);
-
-            $this->entityManager->flush();
-        } finally {
-            static::$version = true;
+        if (! $page instanceof Page) {
+            throw new Exception('Page not found `'.$pageId.'`');
         }
+
+        $this->populate($page, $version);
+
+        $this->entityManager->flush();
+
+        static::$version = true;
     }
 
     public function populate(Page $page, string $version, ?int $pageId = null): Page
