@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Pushword\Version;
 
 use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
@@ -76,19 +74,7 @@ class Versionner
                 throw new Exception('Page not found `'.$pageId.'`');
             }
 
-            $oldSlug = $page->slug;
             $this->populate($page, $version);
-
-            // If slug changed, remove any redirect page that would conflict
-            if ($page->slug !== $oldSlug) {
-                $conflicting = $this->entityManager->getRepository(Page::class)->findOneBy([
-                    'slug' => $page->slug,
-                    'host' => $page->host,
-                ]);
-                if (null !== $conflicting && $conflicting->id !== $page->id && null !== $conflicting->getRedirection()) {
-                    $this->entityManager->remove($conflicting);
-                }
-            }
 
             $this->entityManager->flush();
         } finally {
