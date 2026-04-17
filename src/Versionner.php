@@ -10,6 +10,7 @@ use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping\Column;
 use Exception;
 use Pushword\Core\Entity\Page;
+use Pushword\Core\EventListener\PageListener;
 // use Doctrine\ORM\Event\LifecycleEventArgs;
 use Pushword\Core\Utils\Entity;
 use Symfony\Component\Filesystem\Filesystem;
@@ -66,6 +67,7 @@ class Versionner
     public function loadVersion(string $pageId, string $version): void
     {
         static::$version = false;
+        PageListener::$skipSlugChangeDetection = true;
 
         try {
             $page = $this->entityManager->getRepository(Page::class)->find($pageId);
@@ -74,11 +76,24 @@ class Versionner
                 throw new Exception('Page not found `'.$pageId.'`');
             }
 
+            $oldSlug = $page->slug;
             $this->populate($page, $version);
+
+            // If slug changed, remove any redirect page that would conflict
+            if ($page->slug !== $oldSlug) {
+                $conflicting = $this->entityManager->getRepository(Page::class)->findOneBy([
+                    'slug' => $page->slug,
+                    'host' => $page->host,
+                ]);
+                if (null !== $conflicting && $conflicting->id !== $page->id && null !== $conflicting->getRedirection()) {
+                    $this->entityManager->remove($conflicting);
+                }
+            }
 
             $this->entityManager->flush();
         } finally {
             static::$version = true;
+            PageListener::$skipSlugChangeDetection = false;
         }
     }
 
