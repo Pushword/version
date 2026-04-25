@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Pushword\Version\Tests;
 
 use PHPUnit\Framework\Attributes\Group;
@@ -10,7 +12,7 @@ use Symfony\Component\Serializer\Encoder\JsonEncoder;
 use Symfony\Component\Serializer\Serializer;
 
 #[Group('integration')]
-class VersionTest extends KernelTestCase
+final class VersionTest extends KernelTestCase
 {
     public function testIt(): void
     {
