@@ -14,7 +14,7 @@
   <a class="btn btn-outline-secondary" href="{{ path('admin_version_list', {type: type, id: entity.id}) }}">
     <i class="fa fa-arrow-left me-1" aria-hidden="true" aria-label="{{ 'versionBackToList'|trans }}"></i>
   </a>
-  <a class="btn btn-warning" href="{{ path('admin_version_load', {type: type, id: entity.id, version: versionLeft}) }}">
+  <a class="btn btn-warning" id="restore-version-btn" href="{{ path('admin_version_load', {type: type, id: entity.id, version: versionLeft}) }}">
     <i class="fa fa-undo me-1" aria-hidden="true"></i> {{ 'versionRestoreFull'|trans }}
   </a>
   <button type="button" class="btn btn-primary" id="save-changes-btn">
@@ -31,14 +31,13 @@
 
 {% block main %}
 <div class="card shadow-sm mb-3">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <div></div>
-    <div class="d-flex align-items-center gap-2">
-      <select id="version-left-select" class="form-select form-select-sm" style="width: auto;">
-        {% for version in allVersions %}
-          <option value="{{ version }}" {{ version == versionLeft ? 'selected' : '' }}>{{ version|slice(0, 13) }}</option>
-        {% endfor %}
-      </select>
+  <div class="card-header">
+    <div class="d-flex align-items-center gap-3">
+      <span class="text-muted text-nowrap"><i class="fa fa-clock-rotate-left me-1" aria-hidden="true"></i> {{ 'versionHistorical'|trans }}</span>
+      <input type="range" class="form-range flex-grow-1" id="version-slider"
+             min="0" max="{{ allVersions|length - 1 }}" step="1"
+             aria-label="{{ 'versionHistorical'|trans }}">
+      <span class="text-nowrap fw-semibold" id="version-left-label" style="font-variant-numeric: tabular-nums;"></span>
       <span class="text-muted">vs</span>
       <select id="version-right-select" class="form-select form-select-sm" style="width: auto;">
         <option value="current" {{ versionRight == 'current' ? 'selected' : '' }}>{{ 'versionCurrent'|trans }}</option>
@@ -46,9 +45,6 @@
           <option value="{{ version }}" {{ version == versionRight ? 'selected' : '' }}>{{ version|slice(0, 13) }}</option>
         {% endfor %}
       </select>
-      <button type="button" class="btn btn-sm btn-outline-primary" id="compare-versions-btn">
-        <i class="fa fa-code-compare" aria-hidden="true"></i>
-      </button>
     </div>
   </div>
 
@@ -56,19 +52,17 @@
     {% for field, label in fields|filter((label, field) => field != contentField) %}
       {% set leftValue = attribute(leftEntity, field)|default('') %}
       {% set rightValue = attribute(rightEntity, field)|default('') %}
-      {% if loop.first or leftValue != rightValue %}
-      <div class="row mb-3">
+      <div class="row mb-3" data-field-row="{{ field }}">
         <div class="col-12">
-          <label class="form-label fw-bold">{{ label|trans }} {% if leftValue != rightValue %}<span class="badge bg-warning text-dark">{{ 'versionChanged'|trans }}</span>{% endif %}</label>
+          <label class="form-label fw-bold" for="field-{{ field }}">{{ label|trans }} <span class="badge bg-warning text-dark" data-field-badge {{ leftValue == rightValue ? 'hidden' : '' }}>{{ 'versionChanged'|trans }}</span></label>
         </div>
         <div class="col-6">
-          <input type="text" class="form-control bg-light" value="{{ leftValue }}" readonly>
+          <input type="text" class="form-control bg-light" id="left-{{ field }}" value="{{ leftValue }}" readonly>
         </div>
         <div class="col-6">
           <input type="text" class="form-control" id="field-{{ field }}" value="{{ rightValue }}">
         </div>
       </div>
-      {% endif %}
     {% endfor %}
   </div>
 </div>
@@ -83,42 +77,54 @@
   </div>
 </div>
 
+{# Custom properties diff (stored as a JSON column, edited here as YAML) #}
+<div class="card shadow-sm mt-3">
+  <div class="card-header">
+    <label class="form-label fw-bold mb-0">{{ 'versionCustomProperties'|trans }}</label>
+  </div>
+  <div class="card-body p-0">
+    <div id="cp-diff-container" style="height: 220px; width: 100%;"></div>
+  </div>
+</div>
+
 <form id="save-form" method="POST" action="{{ path('admin_version_save_compare', {type: type, id: entity.id}) }}">
   <input type="hidden" name="_token" value="{{ csrf_token('version_save') }}">
   <textarea name="{{ contentField }}" id="{{ contentField }}-hidden" style="display: none;"></textarea>
   {% for field in fieldNames|filter(f => f != contentField) %}
     <input type="hidden" name="{{ field }}" id="{{ field }}-hidden">
   {% endfor %}
+  <textarea name="unmanagedPropertiesAsYaml" id="cp-hidden" style="display: none;"></textarea>
 </form>
 {% endblock %}
 
 {% block body_javascript %}
 {{ parent() }}
+{{ include('@PushwordVersion/_version_date.html.twig') }}
 <script>
 (function() {
   const leftContent = {{ attribute(leftEntity, contentField)|default('')|json_encode|raw }};
   const rightContent = {{ attribute(rightEntity, contentField)|default('')|json_encode|raw }};
+  const leftCp = {{ attribute(leftEntity, 'unmanagedPropertiesAsYaml')|default('')|json_encode|raw }};
+  const rightCp = {{ attribute(rightEntity, 'unmanagedPropertiesAsYaml')|default('')|json_encode|raw }};
+  const cpField = 'unmanagedPropertiesAsYaml';
   const contentField = {{ contentField|json_encode|raw }};
   const fieldNames = {{ fieldNames|json_encode|raw }};
   const smallFields = fieldNames.filter(function(f) { return f !== contentField; });
   const compareBase = {{ ('/admin/version/' ~ type ~ '/' ~ entity.id ~ '/compare/')|json_encode|raw }};
+  const loadBase = {{ ('/admin/version/' ~ type ~ '/' ~ entity.id ~ '/')|json_encode|raw }};
+  const allVersions = {{ allVersions|json_encode|raw }};
+  const versionLeft = {{ versionLeft|json_encode|raw }};
+  const versionRight = {{ versionRight|json_encode|raw }};
+  const versionLocale = {{ app.request.locale|json_encode|raw }};
+  const versionLabel = window.pwVersionLabel;
 
   let diffEditor = null;
+  let cpEditor = null;
 
-  function initDiffEditor() {
-    if (typeof window.monaco === 'undefined') {
-      setTimeout(initDiffEditor, 100);
-      return;
-    }
-
-    const container = document.getElementById('diff-container');
-
-    const originalModel = monaco.editor.createModel(leftContent, 'markdown');
-    const modifiedModel = monaco.editor.createModel(rightContent, 'markdown');
-
+  function createDiff(containerId, original, modified, language) {
     const settings = window.monacoHelper ? { ...window.monacoHelper.defaultSettings } : {};
 
-    diffEditor = monaco.editor.createDiffEditor(container, {
+    const editor = monaco.editor.createDiffEditor(document.getElementById(containerId), {
       ...settings,
       readOnly: false,
       renderSideBySide: true,
@@ -128,26 +134,155 @@
       minimap: { enabled: false },
     });
 
-    diffEditor.setModel({
-      original: originalModel,
-      modified: modifiedModel,
+    editor.setModel({
+      original: monaco.editor.createModel(original, language),
+      modified: monaco.editor.createModel(modified, language),
     });
+
+    return editor;
+  }
+
+  function initDiffEditor() {
+    if (typeof window.monaco === 'undefined') {
+      setTimeout(initDiffEditor, 100);
+      return;
+    }
+
+    diffEditor = createDiff('diff-container', leftContent, rightContent, 'markdown');
+    cpEditor = createDiff('cp-diff-container', leftCp, rightCp, 'yaml');
 
     window.addEventListener('resize', () => {
       diffEditor.layout();
+      cpEditor.layout();
     });
   }
 
-  document.getElementById('compare-versions-btn').addEventListener('click', function() {
-    const leftVersion = document.getElementById('version-left-select').value;
-    const rightVersion = document.getElementById('version-right-select').value;
-    window.location.href = compareBase + leftVersion + '/' + rightVersion;
+  // Each version filename is a uniqid(): its first 8 hex chars encode the
+  // Unix timestamp (seconds), so the slider labels are derived client-side.
+  const slider = document.getElementById('version-slider');
+  const leftLabel = document.getElementById('version-left-label');
+  const rightSelect = document.getElementById('version-right-select');
+
+  function versionDate(v) {
+    const sec = parseInt(v.slice(0, 8), 16);
+    return Number.isNaN(sec) ? null : new Date(sec * 1000);
+  }
+
+  // The visible label (shared with the version list via pwVersionLabel) stays
+  // compact; the tooltip and screen-reader text carry the full, unambiguous
+  // timestamp so closely spaced saves never collapse into the same string.
+  function versionTitle(v) {
+    const date = versionDate(v);
+    return null === date ? '' : date.toLocaleString(versionLocale, { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
+  // Mirror the same relative labels (and absolute tooltips) on the right side.
+  Array.from(rightSelect.options).forEach(function(opt) {
+    if (opt.value !== 'current') {
+      opt.textContent = versionLabel(opt.value);
+      opt.title = versionTitle(opt.value);
+    }
   });
+
+  function syncLabel() {
+    const version = allVersions[slider.value];
+    leftLabel.textContent = versionLabel(version);
+    leftLabel.title = versionTitle(version);
+    slider.setAttribute('aria-valuetext', versionTitle(version)); // SR reads the precise date
+  }
+
+  // Live scrubbing: fetch a version's fields as JSON and feed them to the
+  // existing Monaco models, so the diff updates in place without a reload.
+  const dataBase = loadBase + 'data/';
+  const restoreBtn = document.getElementById('restore-version-btn');
+  const versionCache = {};
+
+  function inputId(side, field) {
+    return ('left' === side ? 'left-' : 'field-') + field;
+  }
+
+  function readSide(side) {
+    const data = {};
+    data[contentField] = 'left' === side ? leftContent : rightContent;
+    data[cpField] = 'left' === side ? leftCp : rightCp;
+    smallFields.forEach(function(field) {
+      const el = document.getElementById(inputId(side, field));
+      data[field] = null !== el ? el.value : '';
+    });
+    return data;
+  }
+
+  // Seed the cache with the server-rendered initial state to skip refetching it.
+  versionCache[versionLeft] = readSide('left');
+  versionCache[versionRight] = readSide('right');
+
+  function fetchVersion(version) {
+    if (undefined !== versionCache[version]) return Promise.resolve(versionCache[version]);
+    return fetch(dataBase + version, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function(response) { return response.json(); })
+      .then(function(data) { versionCache[version] = data; return data; });
+  }
+
+  function refreshFieldDiff() {
+    smallFields.forEach(function(field) {
+      const left = document.getElementById('left-' + field);
+      const right = document.getElementById('field-' + field);
+      const row = document.querySelector('[data-field-row="' + field + '"]');
+      if (null === left || null === right || null === row) return;
+      row.querySelector('[data-field-badge]').hidden = left.value === right.value;
+    });
+  }
+
+  function applySide(data, side) {
+    if (null === diffEditor) {
+      setTimeout(function() { applySide(data, side); }, 50); // Monaco not ready yet
+      return;
+    }
+    const model = diffEditor.getModel();
+    ('left' === side ? model.original : model.modified).setValue(data[contentField] || '');
+    const cpModel = cpEditor.getModel();
+    ('left' === side ? cpModel.original : cpModel.modified).setValue(data[cpField] || '');
+    smallFields.forEach(function(field) {
+      const el = document.getElementById(inputId(side, field));
+      if (null !== el) el.value = data[field] || '';
+    });
+    refreshFieldDiff();
+  }
+
+  function syncUrl() {
+    history.replaceState(null, '', compareBase + allVersions[slider.value] + '/' + rightSelect.value);
+  }
+
+  // Debounce so keyboard arrow-stepping scrubs the label without firing a
+  // request per step, while a mouse release still updates promptly.
+  let scrubTimer = null;
+  function onSliderChange() {
+    if (null !== scrubTimer) clearTimeout(scrubTimer);
+    scrubTimer = setTimeout(function() {
+      const version = allVersions[slider.value];
+      restoreBtn.href = loadBase + version;
+      syncUrl();
+      fetchVersion(version).then(function(data) { applySide(data, 'left'); }).catch(function() {});
+    }, 250);
+  }
+
+  function onRightChange() {
+    syncUrl();
+    fetchVersion(rightSelect.value).then(function(data) { applySide(data, 'right'); }).catch(function() {});
+  }
+
+  slider.value = Math.max(0, allVersions.indexOf(versionLeft));
+  syncLabel();
+
+  slider.addEventListener('input', syncLabel);
+  slider.addEventListener('change', onSliderChange);
+  rightSelect.addEventListener('change', onRightChange);
 
   document.getElementById('save-changes-btn').addEventListener('click', function() {
     if (!diffEditor) return;
 
     document.getElementById(contentField + '-hidden').value = diffEditor.getModifiedEditor().getValue();
+    document.getElementById('cp-hidden').value = cpEditor.getModifiedEditor().getValue();
 
     smallFields.forEach(function(field) {
       const input = document.getElementById('field-' + field);

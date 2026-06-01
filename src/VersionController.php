@@ -5,8 +5,11 @@ namespace Pushword\Version;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
 use EasyCorp\Bundle\EasyAdminBundle\Contracts\Provider\AdminContextProviderInterface;
 use Exception;
+use InvalidArgumentException;
+use Pushword\Core\Entity\SharedTrait\CustomPropertiesInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -14,6 +17,7 @@ use Symfony\Component\HttpFoundation\Session\Flash\FlashBagInterface;
 use Symfony\Component\HttpFoundation\Session\FlashBagAwareSessionInterface;
 use Symfony\Component\PropertyAccess\PropertyAccess;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
+use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Contracts\Service\Attribute\Required;
 use Symfony\Contracts\Translation\TranslatorInterface;
 
@@ -88,6 +92,7 @@ class VersionController extends AbstractController
             'type' => $type,
             'entity' => $entity,
             'versions' => $versions,
+            'editUrl' => $this->generateUrl(self::TYPES[$type]['editRoute'], ['entityId' => $id]),
         ]);
     }
 
@@ -131,11 +136,47 @@ class VersionController extends AbstractController
             }
         }
 
+        $yaml = $request->request->get('unmanagedPropertiesAsYaml');
+        if ($entity instanceof CustomPropertiesInterface && \is_string($yaml)) {
+            try {
+                $entity->setUnmanagedPropertiesFromYaml($yaml, merge: true);
+            } catch (ParseException|InvalidArgumentException) {
+                $this->getFlashBagFromRequest($request)->add('warning', $this->translator->trans('versionCustomPropertiesInvalid'));
+            }
+        }
+
         $this->versionner->flush();
 
         $this->getFlashBagFromRequest($request)->add('success', $this->translator->trans('versionSaveSuccess'));
 
         return $this->redirectToEdit($type, $id);
+    }
+
+    /**
+     * Returns one version's editable fields as JSON so the compare view can
+     * scrub the slider and refresh the diff without a full page reload.
+     */
+    #[AdminRoute(path: '/version/{type}/{id}/data/{version}', name: 'version_data')]
+    #[IsGranted('ROLE_PUSHWORD_ADMIN')]
+    public function versionData(string $type, string $id, string $version): JsonResponse
+    {
+        $entity = 'current' === $version
+            ? $this->versionner->find($type, $id)
+            : $this->versionner->populate($this->newEntity($type), $type, $id, $version);
+
+        $accessor = PropertyAccess::createPropertyAccessor();
+
+        $data = [];
+        foreach (array_keys(self::TYPES[$type]['fields']) as $field) {
+            $value = $accessor->getValue($entity, $field);
+            $data[$field] = \is_scalar($value) ? (string) $value : '';
+        }
+
+        if ($entity instanceof CustomPropertiesInterface) {
+            $data['unmanagedPropertiesAsYaml'] = $entity->getUnmanagedPropertiesAsYaml();
+        }
+
+        return new JsonResponse($data);
     }
 
     #[AdminRoute(path: '/version/{type}/{id}/{version}', name: 'version_load')]
