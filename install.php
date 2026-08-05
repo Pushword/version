@@ -1,6 +1,7 @@
 <?php
 
 use Pushword\Installer\PostInstall;
+use Pushword\Version\PushwordVersionBundle;
 
 /**
  * Execute via Pushword\Installer\PostInstall::postUpdateCommand.
@@ -9,5 +10,5 @@ if (! PostInstall::isRoot()) {
     throw new Exception('installer mus be run from root');
 }
 
-echo '~~ Adding Routes'.chr(10);
-PostInstall::insertIn('config/routes.yaml', "version:\n    resource: '@PushwordVersionBundle/VersionRoutes.yaml'\n");
+PostInstall::registerBundle(PushwordVersionBundle::class);
+PostInstall::importRoutes('version', '@PushwordVersionBundle/VersionRoutes.yaml');
