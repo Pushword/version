@@ -137,7 +137,9 @@ class Versionner
             'version' => $version,
             'action' => $action,
             'editor' => $editor,
-            'title' => $this->labelOf($entity),
+            // Cut: a page's label falls back to its TEXT title, and MySQL refuses an
+            // over-long row rather than truncating it — taking the page write with it.
+            'title' => mb_substr($this->labelOf($entity), 0, VersionLog::TITLE_MAX_LENGTH),
             'slug' => $this->slugOf($entity),
             'host' => $this->hostOf($entity),
             'created_at' => new DateTimeImmutable(),
