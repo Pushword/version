@@ -73,7 +73,7 @@ final class ControllerTest extends AbstractAdminTestClass
         $editUrl = $router->generate('admin_page_edit', ['entityId' => $pageId]);
         self::assertStringContainsString($editUrl, $listContent, 'list page links back to the page edit screen');
         // The editor column header must render (missing i18n key would blank it).
-        self::assertStringContainsString('<th scope="col">By</th>', $listContent, 'version list exposes the editor column');
+        self::assertSelectorTextContains('thead', 'By');
 
         $loadUrl = $router->generate('admin_version_load', ['type' => 'page', 'id' => $pageId, 'version' => $version]);
         $client->request(Request::METHOD_GET, $loadUrl);
@@ -88,7 +88,7 @@ final class ControllerTest extends AbstractAdminTestClass
         self::assertSame(302, $client->getResponse()->getStatusCode(), (string) $client->getResponse()->getContent());
     }
 
-    public function testReviewRouteRedirectsToCompareAndActionIsListed(): void
+    public function testPageHistoryComparesWithPreviousRevisionWhileReviewUsesLastLiveVersion(): void
     {
         $client = $this->loginUser();
 
@@ -108,17 +108,33 @@ final class ControllerTest extends AbstractAdminTestClass
         $versionner->reset('page', $id);
 
         $page->mainContent = 'second';
-        $em->flush(); // v1
+        $em->flush(); // v1 — live
+        $page->setHoldPublication(true);
         $page->mainContent = 'third';
-        $em->flush(); // v2 — mirrors current
+
+        $em->flush(); // v2 — previous revision
+        $page->mainContent = 'fourth';
+        $em->flush(); // v3 — mirrors current
 
         $versions = $versionner->getVersions('page', $id);
         sort($versions);
+        self::assertCount(3, $versions);
 
         $router = self::getContainer()->get('router');
 
-        // The shortcut redirects to the compare view against the previous distinct
-        // revision (v1), since v2 mirrors the current live state.
+        $editUrl = $this->generateAdminUrl('admin_page_edit', ['id' => $id]);
+        $client->request(Request::METHOD_GET, $editUrl);
+        $client->clickLink('See history');
+        self::assertResponseRedirects($router->generate('admin_version_compare', [
+            'type' => 'page',
+            'id' => $id,
+            'versionLeft' => $versions[1],
+            'versionRight' => 'current',
+        ]));
+        $client->followRedirect();
+        self::assertResponseIsSuccessful();
+        self::assertSelectorExists('#version-slider');
+
         $reviewUrl = $router->generate('admin_version_review', ['type' => 'page', 'id' => $id]);
         $client->request(Request::METHOD_GET, $reviewUrl);
         self::assertSame(302, $client->getResponse()->getStatusCode(), (string) $client->getResponse()->getContent());
@@ -137,7 +153,7 @@ final class ControllerTest extends AbstractAdminTestClass
         $em->flush();
     }
 
-    public function testReviewRouteFallsBackToListWithoutHistory(): void
+    public function testPageHistoryFallsBackToListWithoutSnapshots(): void
     {
         $client = $this->loginUser();
 
@@ -158,10 +174,14 @@ final class ControllerTest extends AbstractAdminTestClass
 
         $router = self::getContainer()->get('router');
 
-        $reviewUrl = $router->generate('admin_version_review', ['type' => 'page', 'id' => $id]);
-        $client->request(Request::METHOD_GET, $reviewUrl);
-        self::assertSame(302, $client->getResponse()->getStatusCode(), (string) $client->getResponse()->getContent());
-        self::assertStringContainsString('/version/page/'.$id.'/list', (string) $client->getResponse()->headers->get('Location'));
+        $client->request(Request::METHOD_GET, $this->generateAdminUrl('admin_page_edit', ['id' => $id]));
+        $client->clickLink('See history');
+        self::assertResponseRedirects($router->generate('admin_version_list', ['type' => 'page', 'id' => $id]));
+        $crawler = $client->followRedirect();
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('#main', 'No version available.');
+        self::assertSelectorNotExists('#main table');
+        self::assertSame($this->generateAdminUrl('admin_page_edit', ['id' => $id]), $crawler->selectLink('Edit page')->attr('href'));
 
         $em = self::getContainer()->get('doctrine.orm.default_entity_manager');
         $em->remove($em->getRepository(Page::class)->find($id) ?? $page);
