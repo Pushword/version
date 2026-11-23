@@ -13,9 +13,9 @@ use Doctrine\ORM\Event\PostUpdateEventArgs;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping\Column;
 use Exception;
+use Pushword\Core\Collaboration\LiveWrite;
 use Pushword\Core\Entity\Page;
 use Pushword\Core\Entity\SharedTrait\IdInterface;
-use Pushword\Core\Entity\User;
 use Pushword\Core\EventListener\PageListener;
 use Pushword\Core\Service\RevisionCalculator;
 use Pushword\Core\Utils\Entity;
@@ -26,7 +26,11 @@ use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 use Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
 use Symfony\Component\Serializer\SerializerInterface;
+use UnexpectedValueException;
 
+/**
+ * @phpstan-type SnapshotMetadata array{h1?: string, title?: string, name?: string, slug?: string, editMessage?: string|null, holdPublicationAt?: string|null, editedBy?: array{username?: string}}
+ */
 #[AsDoctrineListener(event: Events::postPersist)]
 #[AsDoctrineListener(event: Events::postUpdate)]
 class Versionner
@@ -40,6 +44,7 @@ class Versionner
         private readonly EntityManagerInterface $entityManager,
         private readonly SerializerInterface $serializer,
         private readonly RevisionCalculator $revisions,
+        private readonly ?LiveWrite $liveWrite = null,
     ) {
         $this->fileSystem = new Filesystem();
     }
@@ -84,7 +89,18 @@ class Versionner
         }
 
         \assert($entity instanceof IdInterface); // every versionable type uses IdTrait
-        $this->createVersion($type, $entity, $action);
+        if (true === $this->liveWrite?->isActive($entity)) {
+            $previous = $this->liveWrite->previousPage();
+            if (null !== $previous) {
+                [$content, $editor] = $previous;
+                $this->createVersion($type, $entity, $action, $content, $editor);
+            }
+
+            return;
+        }
+
+        $editor = $entity instanceof Page ? $entity->editedBy?->getUserIdentifier() : null;
+        $this->createVersion($type, $entity, $action, $this->revisions->serialize($entity), $editor);
     }
 
     private function typeOf(object $entity): ?string
@@ -98,10 +114,9 @@ class Versionner
         return null;
     }
 
-    private function createVersion(string $type, IdInterface $entity, string $action): void
+    private function createVersion(string $type, IdInterface $entity, string $action, string $jsonContent, ?string $editor): void
     {
         $id = (int) $entity->id;
-        $jsonContent = $this->revisions->serialize($entity);
         $hash = sha1($jsonContent);
 
         // Idempotency: if the most recent snapshot already carries this hash,
@@ -114,14 +129,14 @@ class Versionner
         }
 
         $filename = $this->buildVersionFilename($hash);
+        $snapshot = $this->snapshotWithEditor($jsonContent, $editor);
         $this->fileSystem->dumpFile(
             $this->getVersionFile($type, $id, $filename),
-            $this->snapshotWithEditor($entity, $jsonContent),
+            gzencode($snapshot, 1) ?: $snapshot,
         );
 
         $this->pruneOldVersions($type, $id);
 
-        $editor = $entity instanceof Page ? $entity->editedBy?->getUserIdentifier() : null;
         $this->logActivity($type, $entity, $filename, $action, $editor);
     }
 
@@ -182,15 +197,15 @@ class Versionner
      * restore (no phantom User is created). Flat imports have no authenticated
      * editor, so editedBy stays null and nothing is injected.
      */
-    private function snapshotWithEditor(IdInterface $entity, string $jsonContent): string
+    private function snapshotWithEditor(string $jsonContent, ?string $editor): string
     {
-        if (! $entity instanceof Page || ! $entity->editedBy instanceof User) {
+        if (null === $editor) {
             return $jsonContent;
         }
 
         /** @var array<string, mixed> $data */
         $data = json_decode($jsonContent, true, 512, \JSON_THROW_ON_ERROR);
-        $data['editedBy'] = ['username' => $entity->editedBy->getUserIdentifier()];
+        $data['editedBy'] = ['username' => $editor];
 
         return json_encode($data, \JSON_THROW_ON_ERROR);
     }
@@ -299,9 +314,7 @@ class Versionner
 
     public function populate(object $entity, string $type, int|string $id, string $version): object
     {
-        $serialized = $this->fileSystem->readFile($this->getVersionFile($type, $id, $version));
-
-        $this->serializer->deserialize($serialized, $entity::class, 'json', [
+        $this->serializer->deserialize($this->readSnapshot($type, $id, $version), $entity::class, 'json', [
             AbstractNormalizer::OBJECT_TO_POPULATE => $entity,
             ObjectNormalizer::DISABLE_TYPE_ENFORCEMENT => true, // permits to import tags as string
             // Restrict to the same column properties the snapshot was built
@@ -319,12 +332,24 @@ class Versionner
      */
     public function editorOf(string $type, int|string $id, string $version): ?string
     {
-        $serialized = $this->fileSystem->readFile($this->getVersionFile($type, $id, $version));
+        return $this->metadataOf($type, $id, $version)['editedBy']['username'] ?? null;
+    }
 
-        /** @var array{editedBy?: array{username?: string}} $data */
-        $data = json_decode($serialized, true, 512, \JSON_THROW_ON_ERROR);
+    /** @return SnapshotMetadata */
+    public function metadataOf(string $type, int|string $id, string $version): array
+    {
+        /** @var SnapshotMetadata $data */
+        $data = json_decode($this->readSnapshot($type, $id, $version), true, flags: \JSON_THROW_ON_ERROR);
 
-        return $data['editedBy']['username'] ?? null;
+        return array_intersect_key($data, [
+            'h1' => true,
+            'title' => true,
+            'name' => true,
+            'slug' => true,
+            'editMessage' => true,
+            'holdPublicationAt' => true,
+            'editedBy' => true,
+        ]);
     }
 
     public function find(string $type, int|string $id): object
@@ -377,7 +402,7 @@ class Versionner
 
         sort($versions); // uniqid prefix is chronological
 
-        return $versions[array_key_last($versions)];
+        return array_last($versions);
     }
 
     /**
@@ -418,19 +443,23 @@ class Versionner
         return $versions[0]; // every version matches current → oldest
     }
 
-    /**
-     * Whether the snapshot recorded the page in "hold publication" mode. Reads the
-     * raw JSON (like editorOf) instead of hydrating, since holdPublicationAt is a
-     * column and always present in the snapshot.
-     */
     private function isHeldSnapshot(string $type, int|string $id, string $version): bool
     {
-        $serialized = $this->fileSystem->readFile($this->getVersionFile($type, $id, $version));
+        return null !== ($this->metadataOf($type, $id, $version)['holdPublicationAt'] ?? null);
+    }
 
-        /** @var array{holdPublicationAt?: mixed} $data */
-        $data = json_decode($serialized, true, 512, \JSON_THROW_ON_ERROR);
+    private function readSnapshot(string $type, int|string $id, string $version): string
+    {
+        $snapshot = $this->fileSystem->readFile($this->getVersionFile($type, $id, $version));
 
-        return null !== ($data['holdPublicationAt'] ?? null);
+        // Legacy JSON snapshots share the same filenames as gzip snapshots.
+        if (! str_starts_with($snapshot, "\x1f\x8b")) {
+            return $snapshot;
+        }
+
+        $json = @gzdecode($snapshot);
+
+        return false !== $json ? $json : throw new UnexpectedValueException('Invalid gzip snapshot '.$version);
     }
 
     private function getVersionDir(string $type, int|string $id): string
